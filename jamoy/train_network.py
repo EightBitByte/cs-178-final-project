@@ -4,6 +4,7 @@
 import torch
 import os
 from torch import device as t_device
+from sys import argv
 from torch.cuda import is_available as cuda_is_available
 from datasets import load_dataset
 import torch.nn as nn
@@ -13,17 +14,18 @@ import numpy as np
 import colorama as color
 from transformers import AutoTokenizer
 
-# The number of epochs for training loop.
-NUM_EPOCHS = 10
+NUM_EPOCHS = 10      # The number of epochs for training loop
 EMBEDDING_DIM = 128  # Dimension for token embeddings
 HIDDEN_SIZE = 50     # Hidden size for the fully connected layer
 
 class SimpleNeuralNetwork(nn.Module):
     def __init__(self, vocab_size, embedding_dim, hidden_size, num_classes, pad_idx):
         super(SimpleNeuralNetwork, self).__init__()
+        self.dropout_rate = 0.5 # Define a dropout rate
         self.embedding = nn.Embedding(vocab_size, embedding_dim, padding_idx=pad_idx)
         self.fc1 = nn.Linear(embedding_dim, hidden_size)
         self.relu = nn.ReLU()
+        self.dropout = nn.Dropout(self.dropout_rate)
         self.fc2 = nn.Linear(hidden_size, num_classes)
 
     def forward(self, input_ids, attention_mask):
@@ -47,10 +49,11 @@ class SimpleNeuralNetwork(nn.Module):
 
         out = self.fc1(pooled_embeddings)
         out = self.relu(out)
+        out = self.dropout(out) # Apply dropout before the final layer
         out = self.fc2(out)
         return out
 
-def train_model():
+def train_model(filename: str):
     device = t_device("cuda" if cuda_is_available() else "cpu")
     print(f'{color.Fore.BLUE}{color.Style.BRIGHT}Using device: {device}{color.Style.RESET_ALL}')
 
@@ -101,7 +104,7 @@ def train_model():
     )
 
     # Begin training
-    print(f'{color.Fore.BLUE}{color.Style.BRIGHT}Starting training...{color.Style.RESET_ALL}')
+    print(f'{color.Fore.BLUE}{color.Style.BRIGHT}Starting training of model {filename}...{color.Style.RESET_ALL}')
     for epoch in range(NUM_EPOCHS):
         model.train()
         train_loss = 0.0
@@ -125,14 +128,16 @@ def train_model():
 
         train_loss /= len(data_loader.dataset) # Average training loss for the epoch
 
-        print(f'{color.Fore.GREEN}{color.Style.BRIGHT}Epoch [{epoch+1}/{NUM_EPOCHS}], Loss: {train_loss:.4f}{color.Style.RESET_ALL}')
+        print(f'{color.Fore.GREEN}Epoch [{epoch+1}/{NUM_EPOCHS}], Loss: {train_loss:.4f}{color.Style.RESET_ALL}')
     print(f'{color.Fore.GREEN}{color.Style.BRIGHT}Training finished!{color.Style.RESET_ALL}')
     
     # Save the trained model
     os.makedirs('model', exist_ok=True)
-    model_path = 'model/simple_imdb_classifier.pth'
+    model_path = f'model/{filename}'
     torch.save(model.state_dict(), model_path)
     print(f'{color.Fore.GREEN}{color.Style.BRIGHT}Model saved to {model_path}!{color.Style.RESET_ALL}')
 
 if __name__ == '__main__':
-    train_model()
+    if len(argv) < 2:
+        print('Usage: train_network <model_name>')
+    train_model(argv[1])

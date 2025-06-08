@@ -1,0 +1,105 @@
+# test_network.py
+#
+# Tests the neural network on the IMdB training and testing dataset.
+import torch
+import os
+from torch import device as t_device
+from torch.cuda import is_available as cuda_is_available
+from datasets import load_dataset
+import torch.nn as nn
+import torch.optim as optim
+from torch.utils.data import Dataset, DataLoader
+import numpy as np
+import colorama as color
+from transformers import AutoTokenizer
+from train_network import SimpleNeuralNetwork
+
+NUM_EPOCHS = 10      # The number of epochs for training loop
+EMBEDDING_DIM = 128  # Dimension for token embeddings
+HIDDEN_SIZE = 50     # Hidden size for the fully connected layer
+
+def evaluate_model(model, data_loader, device, criterion):
+    model.eval()  # Set model to evaluation mode
+    total_loss = 0.0
+    correct_predictions = 0
+    total_samples = 0
+
+    with torch.no_grad():  # Disable gradient calculations
+        for batch in data_loader:
+            input_ids = batch['input_ids'].to(device)
+            attention_mask = batch['attention_mask'].to(device)
+            labels = batch['label'].to(device)
+
+            outputs = model(input_ids, attention_mask)
+            loss = criterion(outputs, labels)
+            total_loss += loss.item() * labels.size(0)
+
+            _, predicted = torch.max(outputs.data, 1)
+            total_samples += labels.size(0)
+            correct_predictions += (predicted == labels).sum().item()
+
+    avg_loss = total_loss / total_samples if total_samples > 0 else 0
+    accuracy = correct_predictions / total_samples if total_samples > 0 else 0
+    return avg_loss, accuracy
+
+
+def test_model(model_path: str):
+    device = t_device("cuda" if cuda_is_available() else "cpu")
+    print(f'{color.Fore.BLUE}{color.Style.BRIGHT}Using device: {device}{color.Style.RESET_ALL}')
+
+    print('Loading tokenizer...')
+    tokenizer = AutoTokenizer.from_pretrained('bert-base-cased')
+    vocab_size = tokenizer.vocab_size
+    pad_token_id = tokenizer.pad_token_id if tokenizer.pad_token_id is not None else 0
+    print(f'{color.Fore.GREEN}Tokenizer loaded!{color.Style.RESET_ALL}')
+
+    print(f'Loading model from {model_path}...')
+    model_instance = SimpleNeuralNetwork(
+        vocab_size=vocab_size,
+        embedding_dim=EMBEDDING_DIM,
+        hidden_size=HIDDEN_SIZE,
+        num_classes=2,
+        pad_idx=pad_token_id
+    ).to(device)
+    model_instance.load_state_dict(torch.load(model_path, map_location=device))
+    print(f'{color.Fore.GREEN}Model loaded and weights populated!{color.Style.RESET_ALL}')
+
+    criterion = nn.CrossEntropyLoss()
+
+    def tokenize_function(examples):
+        return tokenizer(examples['text'], truncation=True, padding=True)
+
+    datasets_to_evaluate = {}
+
+    # Load train dataset
+    print('Loading train dataset for evaluation...')
+    datasets_to_evaluate['train'] = load_dataset("stanfordnlp/imdb", split='train')
+    print(f'{color.Fore.GREEN}Loaded {len(datasets_to_evaluate["train"])} training datapoints!{color.Style.RESET_ALL}')
+
+    # Load test dataset
+    print('Loading test dataset...')
+    datasets_to_evaluate['test'] = load_dataset("stanfordnlp/imdb", split='test')
+    print(f'{color.Fore.GREEN}Loaded {len(datasets_to_evaluate["test"])} test datapoints!{color.Style.RESET_ALL}')
+
+    for split_name, dataset_obj in datasets_to_evaluate.items():
+        print(f'\n{color.Fore.CYAN}{color.Style.BRIGHT}Processing {split_name} dataset...{color.Style.RESET_ALL}')
+        print(f'Tokenizing {split_name} dataset...')
+        tokenized_data = dataset_obj.map(tokenize_function, batched=True, remove_columns=['text'])
+        tokenized_data.set_format(type='torch', columns=['input_ids', 'attention_mask', 'token_type_ids', 'label'])
+        print(f'{color.Fore.GREEN}Tokenizing for {split_name} complete!{color.Style.RESET_ALL}')
+
+        data_loader = DataLoader(tokenized_data, batch_size=32, shuffle=False, num_workers=4, pin_memory=True)
+
+        print(f'Evaluating on {split_name} dataset...')
+        avg_loss, accuracy = evaluate_model(model_instance, data_loader, device, criterion)
+        print(f'{color.Fore.GREEN}{color.Style.BRIGHT}Results for {split_name} dataset:{color.Style.RESET_ALL}')
+        print(f'  Average Loss: {avg_loss:.4f}')
+        print(f'  Accuracy: {accuracy*100:.2f}%{color.Style.RESET_ALL}')
+
+if __name__ == '__main__':
+    model_file_path = os.path.join('models', 'simple_imdb_classifier.pth')
+    if not os.path.exists(model_file_path):
+        print(f"{color.Fore.RED}{color.Style.BRIGHT}Error: Model file not found at {model_file_path}{color.Style.RESET_ALL}")
+        print(f"Please ensure the model has been trained and saved to this location, or update the path.")
+    else:
+        test_model(model_file_path)
