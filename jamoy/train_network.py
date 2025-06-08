@@ -27,10 +27,22 @@ class SimpleNeuralNetwork(nn.Module):
         super(SimpleNeuralNetwork, self).__init__()
         self.dropout_rate = 0.5 
         self.embedding = nn.Embedding(vocab_size, embedding_dim, padding_idx=pad_idx)
-        self.fc1 = nn.Linear(embedding_dim, hidden_size)
-        self.relu = nn.ReLU()
-        self.dropout = nn.Dropout(self.dropout_rate)
-        self.fc2 = nn.Linear(hidden_size, num_classes)
+
+        # First hidden layer
+        self.fc_hidden1 = nn.Linear(embedding_dim, hidden_size)
+        self.relu1 = nn.ReLU()
+        self.dropout1 = nn.Dropout(self.dropout_rate)
+
+        # Second hidden layer
+        intermediate_hidden_size = hidden_size // 2
+        if intermediate_hidden_size < 1: 
+            intermediate_hidden_size = 1
+        self.fc_hidden2 = nn.Linear(hidden_size, intermediate_hidden_size)
+        self.relu2 = nn.ReLU()
+        self.dropout2 = nn.Dropout(self.dropout_rate)
+
+        # Output layer
+        self.fc_output = nn.Linear(intermediate_hidden_size, num_classes)
 
     def forward(self, input_ids, attention_mask):
         embedded = self.embedding(input_ids)  
@@ -51,10 +63,16 @@ class SimpleNeuralNetwork(nn.Module):
 
         pooled_embeddings = summed_embeddings / num_non_padding_tokens 
 
-        out = self.fc1(pooled_embeddings)
-        out = self.relu(out)
-        out = self.dropout(out) 
-        out = self.fc2(out)
+        # Pass through the first hidden layer
+        out = self.fc_hidden1(pooled_embeddings)
+        out = self.relu1(out)
+        out = self.dropout1(out)
+        # Pass through the second hidden layer
+        out = self.fc_hidden2(out)
+        out = self.relu2(out)
+        out = self.dropout2(out)
+        # Pass through the output layer
+        out = self.fc_output(out)
         return out
 
 def evaluate_model_during_training(model, data_loader, device, criterion):
