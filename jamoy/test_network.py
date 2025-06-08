@@ -4,12 +4,11 @@
 import torch
 import os
 from torch import device as t_device
+from sys import argv
 from torch.cuda import is_available as cuda_is_available
 from datasets import load_dataset
 import torch.nn as nn
-import torch.optim as optim
-from torch.utils.data import Dataset, DataLoader
-import numpy as np
+from torch.utils.data import DataLoader
 import colorama as color
 from transformers import AutoTokenizer
 from train_network import SimpleNeuralNetwork
@@ -71,15 +70,18 @@ def test_model(model_path: str):
 
     datasets_to_evaluate = {}
 
-    # Load train dataset
-    print('Loading train dataset for evaluation...')
-    datasets_to_evaluate['train'] = load_dataset("stanfordnlp/imdb", split='train')
-    print(f'{color.Fore.GREEN}Loaded {len(datasets_to_evaluate["train"])} training datapoints!{color.Style.RESET_ALL}')
+    # Load original train dataset
+    print('Loading original train dataset...')
+    original_train_dataset = load_dataset("stanfordnlp/imdb", split='train')
+    print(f'{color.Fore.GREEN}Loaded {len(original_train_dataset)} original training datapoints!{color.Style.RESET_ALL}')
 
-    # Load test dataset
-    print('Loading test dataset...')
-    datasets_to_evaluate['test'] = load_dataset("stanfordnlp/imdb", split='test')
-    print(f'{color.Fore.GREEN}Loaded {len(datasets_to_evaluate["test"])} test datapoints!{color.Style.RESET_ALL}')
+    # Split the original train dataset into new train and validation sets (75/25)
+    print('Splitting dataset into train and validation (75/25)...')
+    split_datasets = original_train_dataset.train_test_split(test_size=0.25, shuffle=True, seed=42)
+    datasets_to_evaluate['train'] = split_datasets['train']
+    datasets_to_evaluate['validation'] = split_datasets['test'] 
+    print(f'{color.Fore.GREEN}Split complete: {len(datasets_to_evaluate["train"])} training, {len(datasets_to_evaluate["validation"])} validation datapoints.{color.Style.RESET_ALL}')
+
 
     for split_name, dataset_obj in datasets_to_evaluate.items():
         print(f'\n{color.Fore.CYAN}{color.Style.BRIGHT}Processing {split_name} dataset...{color.Style.RESET_ALL}')
@@ -97,7 +99,7 @@ def test_model(model_path: str):
         print(f'  Accuracy: {accuracy*100:.2f}%{color.Style.RESET_ALL}')
 
 if __name__ == '__main__':
-    model_file_path = os.path.join('models', 'simple_imdb_classifier.pth')
+    model_file_path = os.path.join('models', argv[1])
     if not os.path.exists(model_file_path):
         print(f"{color.Fore.RED}{color.Style.BRIGHT}Error: Model file not found at {model_file_path}{color.Style.RESET_ALL}")
         print(f"Please ensure the model has been trained and saved to this location, or update the path.")

@@ -21,11 +21,11 @@ HIDDEN_SIZE = 50     # Hidden size for the fully connected layer
 class SimpleNeuralNetwork(nn.Module):
     def __init__(self, vocab_size, embedding_dim, hidden_size, num_classes, pad_idx):
         super(SimpleNeuralNetwork, self).__init__()
-        self.dropout_rate = 0.5 # Define a dropout rate
+        # self.dropout_rate = 0.5 
         self.embedding = nn.Embedding(vocab_size, embedding_dim, padding_idx=pad_idx)
         self.fc1 = nn.Linear(embedding_dim, hidden_size)
         self.relu = nn.ReLU()
-        self.dropout = nn.Dropout(self.dropout_rate)
+        # self.dropout = nn.Dropout(self.dropout_rate)
         self.fc2 = nn.Linear(hidden_size, num_classes)
 
     def forward(self, input_ids, attention_mask):
@@ -53,14 +53,45 @@ class SimpleNeuralNetwork(nn.Module):
         out = self.fc2(out)
         return out
 
+def evaluate_model_during_training(model, data_loader, device, criterion):
+    model.eval()  # Set model to evaluation mode
+    total_loss = 0.0
+    correct_predictions = 0
+    total_samples = 0
+
+    with torch.no_grad():  # Disable gradient calculations
+        for batch in data_loader:
+            input_ids = batch['input_ids'].to(device)
+            attention_mask = batch['attention_mask'].to(device)
+            labels = batch['label'].to(device)
+
+            outputs = model(input_ids, attention_mask)
+            loss = criterion(outputs, labels)
+            total_loss += loss.item() * labels.size(0)
+
+            _, predicted = torch.max(outputs.data, 1)
+            total_samples += labels.size(0)
+            correct_predictions += (predicted == labels).sum().item()
+
+    avg_loss = total_loss / total_samples if total_samples > 0 else 0
+    accuracy = correct_predictions / total_samples if total_samples > 0 else 0
+    return avg_loss, accuracy
+
+
 def train_model(filename: str):
     device = t_device("cuda" if cuda_is_available() else "cpu")
     print(f'{color.Fore.BLUE}{color.Style.BRIGHT}Using device: {device}{color.Style.RESET_ALL}')
 
     # Load dataset
     print('Loading dataset...')
-    train_dataset = load_dataset("stanfordnlp/imdb", split='train')
-    print(f'{color.Fore.GREEN}Loaded {len(train_dataset)} datapoints!{color.Style.RESET_ALL}')
+    full_train_dataset = load_dataset("stanfordnlp/imdb", split='train')
+    print(f'{color.Fore.GREEN}Loaded {len(full_train_dataset)} total datapoints for training/validation!{color.Style.RESET_ALL}')
+
+    # Split dataset into training and validation sets
+    split_datasets = full_train_dataset.train_test_split(test_size=0.25, shuffle=True, seed=42)
+    train_dataset = split_datasets['train']
+    val_dataset = split_datasets['test'] 
+    print(f'{color.Fore.GREEN}Split dataset: {len(train_dataset)} training, {len(val_dataset)} validation datapoints.{color.Style.RESET_ALL}')
 
     # Tokenize the text
     print('Tokenizing text...')
@@ -82,33 +113,52 @@ def train_model(filename: str):
     def tokenize(examples):
         return tokenizer(examples['text'], truncation=True, padding=True)
 
-    tokenized_dataset = train_dataset.map(
+    print('Tokenizing training data...')
+    tokenized_train_dataset = train_dataset.map(
         tokenize,
         batched=True,
         remove_columns=['text']
     )
-
-    tokenized_dataset.set_format(
+    tokenized_train_dataset.set_format(
         type='torch', 
         columns=['input_ids', 'attention_mask', 'token_type_ids', 'label']
     )
-    print(f'{color.Fore.GREEN}Tokenizing complete!{color.Style.RESET_ALL}')
+    print(f'{color.Fore.GREEN}Training data tokenizing complete!{color.Style.RESET_ALL}')
 
-    # Load dataset into batches for training
-    data_loader = DataLoader(
-        tokenized_dataset,
+    print('Tokenizing validation data...')
+    tokenized_val_dataset = val_dataset.map(
+        tokenize,
+        batched=True,
+        remove_columns=['text']
+    )
+    tokenized_val_dataset.set_format(
+        type='torch',
+        columns=['input_ids', 'attention_mask', 'token_type_ids', 'label']
+    )
+    print(f'{color.Fore.GREEN}Validation data tokenizing complete!{color.Style.RESET_ALL}')
+
+    # Create DataLoaders
+    train_loader = DataLoader(
+        tokenized_train_dataset,
         batch_size=32,
         shuffle=True,
         num_workers=4,
         pin_memory=True
     )
+    val_loader = DataLoader(
+        tokenized_val_dataset,
+        batch_size=32,
+        shuffle=False, # No need to shuffle validation data
+        num_workers=4,
+        pin_memory=True
+    )
 
     # Begin training
-    print(f'{color.Fore.BLUE}{color.Style.BRIGHT}Starting training of model {filename}...{color.Style.RESET_ALL}')
+    print(f'{color.Fore.BLUE}{color.Style.BRIGHT}Starting training of "{filename}"...{color.Style.RESET_ALL}')
     for epoch in range(NUM_EPOCHS):
         model.train()
         train_loss = 0.0
-        for batch_idx, batch in enumerate(data_loader):
+        for batch_idx, batch in enumerate(train_loader):
             # Extract labels from the batch
             input_ids = batch['input_ids'].to(device)
             attention_mask = batch['attention_mask'].to(device)
@@ -126,14 +176,30 @@ def train_model(filename: str):
             
             train_loss += loss.item() * labels.size(0) # Use batch size from labels or model_inputs
 
-        train_loss /= len(data_loader.dataset) # Average training loss for the epoch
+        avg_train_loss = train_loss / len(train_loader.dataset) 
 
-        print(f'{color.Fore.GREEN}Epoch [{epoch+1}/{NUM_EPOCHS}], Loss: {train_loss:.4f}{color.Style.RESET_ALL}')
+        # Evaluate on validation set
+        val_loss, val_accuracy = evaluate_model_during_training(model, val_loader, device, criterion)
+
+        print(f'{color.Fore.GREEN}Epoch [{epoch+1}/{NUM_EPOCHS}]:{color.Style.RESET_ALL} '
+              f'Train Loss: {avg_train_loss:.4f} | '
+              f'Val Loss: {val_loss:.4f} | Val Acc: {val_accuracy*100:.2f}%')
     print(f'{color.Fore.GREEN}{color.Style.BRIGHT}Training finished!{color.Style.RESET_ALL}')
+
+
+    # Evaluate on training, validation set one last time
+    val_loss, val_accuracy = evaluate_model_during_training(model, val_loader, device, criterion)
+    train_loss, train_accuracy = evaluate_model_during_training(model, train_loader, device, criterion)
+
+    print(f'{color.Fore.GREEN}Final Losses:{color.Style.RESET_ALL} '
+          f'Train Loss: {avg_train_loss:.4f} | '
+          f'Train Acc: {train_accuracy*100:.2f}% | '
+          f'Val Loss: {val_loss:.4f} | '
+          f'Val Acc: {val_accuracy*100:.2f}%')
     
     # Save the trained model
-    os.makedirs('model', exist_ok=True)
-    model_path = f'model/{filename}'
+    os.makedirs('models', exist_ok=True)
+    model_path = f'models/{filename}'
     torch.save(model.state_dict(), model_path)
     print(f'{color.Fore.GREEN}{color.Style.BRIGHT}Model saved to {model_path}!{color.Style.RESET_ALL}')
 
