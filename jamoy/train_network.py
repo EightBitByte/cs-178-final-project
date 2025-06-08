@@ -1,6 +1,7 @@
 # train_network.py
 #
 # Trains a neural network on the training IMdB dataset.
+import os
 import torch
 from torch import device as t_device
 from sys import argv
@@ -15,10 +16,11 @@ import colorama as color
 from transformers import AutoTokenizer
 
 NUM_EPOCHS = 10      # The number of epochs for training loop
-EMBEDDING_DIM = 128  # Dimension for token embeddings
+EMBEDDING_DIM = 256  # Dimension for token embeddings
 HIDDEN_SIZE = 50     # Hidden size for the fully connected layer
 BATCH_SIZE = 64
 LEARNING_RATE = 1e-3
+STATS_CSV_FILENAME = "training_stats.csv"
 
 class SimpleNeuralNetwork(nn.Module):
     def __init__(self, vocab_size, embedding_dim, hidden_size, num_classes, pad_idx):
@@ -198,12 +200,15 @@ def train_model(filename: str):
           f'Val Loss: {val_loss:.4f} | '
           f'Val Acc: {val_accuracy*100:.2f}%')
 
-    # Write stats to csv file
-    makedirs('stats', exist_ok=True)
-    with open(f'stats/{filename[:-3]}.csv', 'w') as file:
-        file.write('train_loss,train_acc,val_loss,val_acc\n')
-        file.write(f'{avg_train_loss:.4f},{train_accuracy*100:.2f},{val_loss:.4f},{val_accuracy*100:.2f}')
-    print(f'{color.Fore.GREEN}{color.Style.BRIGHT}Stats saved to stats/{filename[:-3]}.csv!{color.Style.RESET_ALL}')
+    # Check if file exists to write header only once
+    file_exists = os.path.isfile(STATS_CSV_FILENAME)
+
+    with open(STATS_CSV_FILENAME, 'a') as file: # Open in append mode
+        if not file_exists:
+            file.write('model_name,train_loss,train_acc,val_loss,val_acc\n')
+        model_name_for_stats = filename[:-4] if filename.endswith('.pth') else filename
+        file.write(f'{model_name_for_stats},{avg_train_loss:.4f},{train_accuracy*100:.2f},{val_loss:.4f},{val_accuracy*100:.2f}\n')
+    print(f'{color.Fore.GREEN}{color.Style.BRIGHT}Stats appended to {STATS_CSV_FILENAME}!{color.Style.RESET_ALL}')
     
     # Save the trained model
     makedirs('models', exist_ok=True)
