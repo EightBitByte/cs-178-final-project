@@ -2,3 +2,4 @@ model_name,train_loss,train_acc,val_loss,val_acc
 model_1,0.0208,99.91,0.1258,87.36
 model_2,0.0208,99.01,0.1243,87.42
 model_3,0.0102,99.01,0.1234,87.42
+model_4,0.0205,99.90,0.5197,87.60

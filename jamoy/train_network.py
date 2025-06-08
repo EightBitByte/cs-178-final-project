@@ -16,10 +16,10 @@ import colorama as color
 from transformers import AutoTokenizer
 
 NUM_EPOCHS = 10      # The number of epochs for training loop
-EMBEDDING_DIM = 256  # Dimension for token embeddings
+EMBEDDING_DIM = 128  # Dimension for token embeddings
 HIDDEN_SIZE = 50     # Hidden size for the fully connected layer
 BATCH_SIZE = 64
-LEARNING_RATE = 1e-3
+LEARNING_RATE = 5e-4 # Try 5e-4 (0.0005) or 1e-4 (0.0001).
 STATS_CSV_FILENAME = "training_stats.csv"
 
 class SimpleNeuralNetwork(nn.Module):
