@@ -2,9 +2,9 @@
 #
 # Trains a neural network on the training IMdB dataset.
 import torch
-import os
 from torch import device as t_device
 from sys import argv
+from os import makedirs
 from torch.cuda import is_available as cuda_is_available
 from datasets import load_dataset
 import torch.nn as nn
@@ -17,15 +17,17 @@ from transformers import AutoTokenizer
 NUM_EPOCHS = 10      # The number of epochs for training loop
 EMBEDDING_DIM = 128  # Dimension for token embeddings
 HIDDEN_SIZE = 50     # Hidden size for the fully connected layer
+BATCH_SIZE = 64
+LEARNING_RATE = 1e-3
 
 class SimpleNeuralNetwork(nn.Module):
     def __init__(self, vocab_size, embedding_dim, hidden_size, num_classes, pad_idx):
         super(SimpleNeuralNetwork, self).__init__()
-        # self.dropout_rate = 0.5 
+        self.dropout_rate = 0.5 
         self.embedding = nn.Embedding(vocab_size, embedding_dim, padding_idx=pad_idx)
         self.fc1 = nn.Linear(embedding_dim, hidden_size)
         self.relu = nn.ReLU()
-        # self.dropout = nn.Dropout(self.dropout_rate)
+        self.dropout = nn.Dropout(self.dropout_rate)
         self.fc2 = nn.Linear(hidden_size, num_classes)
 
     def forward(self, input_ids, attention_mask):
@@ -49,7 +51,7 @@ class SimpleNeuralNetwork(nn.Module):
 
         out = self.fc1(pooled_embeddings)
         out = self.relu(out)
-        out = self.dropout(out) # Apply dropout before the final layer
+        out = self.dropout(out) 
         out = self.fc2(out)
         return out
 
@@ -94,7 +96,6 @@ def train_model(filename: str):
     print(f'{color.Fore.GREEN}Split dataset: {len(train_dataset)} training, {len(val_dataset)} validation datapoints.{color.Style.RESET_ALL}')
 
     # Tokenize the text
-    print('Tokenizing text...')
     tokenizer = AutoTokenizer.from_pretrained('bert-base-cased')
     
     vocab_size = tokenizer.vocab_size
@@ -107,7 +108,7 @@ def train_model(filename: str):
         num_classes=2,
         pad_idx=pad_token_id
     ).to(device)
-    optimizer = optim.Adam(model.parameters(), lr=0.001)
+    optimizer = optim.Adam(model.parameters(), lr=LEARNING_RATE)
     criterion = nn.CrossEntropyLoss()
 
     def tokenize(examples):
@@ -140,15 +141,15 @@ def train_model(filename: str):
     # Create DataLoaders
     train_loader = DataLoader(
         tokenized_train_dataset,
-        batch_size=32,
+        batch_size=BATCH_SIZE,
         shuffle=True,
         num_workers=4,
         pin_memory=True
     )
     val_loader = DataLoader(
         tokenized_val_dataset,
-        batch_size=32,
-        shuffle=False, # No need to shuffle validation data
+        batch_size=BATCH_SIZE,
+        shuffle=False, 
         num_workers=4,
         pin_memory=True
     )
@@ -196,9 +197,16 @@ def train_model(filename: str):
           f'Train Acc: {train_accuracy*100:.2f}% | '
           f'Val Loss: {val_loss:.4f} | '
           f'Val Acc: {val_accuracy*100:.2f}%')
+
+    # Write stats to csv file
+    makedirs('stats', exist_ok=True)
+    with open(f'stats/{filename[:-3]}.csv', 'w') as file:
+        file.write('train_loss,train_acc,val_loss,val_acc\n')
+        file.write(f'{avg_train_loss:.4f},{train_accuracy*100:.2f},{val_loss:.4f},{val_accuracy*100:.2f}')
+    print(f'{color.Fore.GREEN}{color.Style.BRIGHT}Stats saved to stats/{filename[:-3]}.csv!{color.Style.RESET_ALL}')
     
     # Save the trained model
-    os.makedirs('models', exist_ok=True)
+    makedirs('models', exist_ok=True)
     model_path = f'models/{filename}'
     torch.save(model.state_dict(), model_path)
     print(f'{color.Fore.GREEN}{color.Style.BRIGHT}Model saved to {model_path}!{color.Style.RESET_ALL}')
@@ -206,4 +214,5 @@ def train_model(filename: str):
 if __name__ == '__main__':
     if len(argv) < 2:
         print('Usage: train_network <model_name>')
-    train_model(argv[1])
+    else:
+        train_model(argv[1])
