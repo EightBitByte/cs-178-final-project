@@ -15,11 +15,11 @@ import numpy as np
 import colorama as color
 from transformers import AutoTokenizer
 
-NUM_EPOCHS = 50      # The number of epochs for training loop
+NUM_EPOCHS = 10      # The number of epochs for training loop
 EMBEDDING_DIM = 128  # Dimension for token embeddings
-HIDDEN_SIZE = 64     # Hidden size for the fully connected layer
+HIDDEN_SIZE = 50     # Hidden size for the fully connected layer
 BATCH_SIZE = 64
-LEARNING_RATE = 1e-4 
+LEARNING_RATE = 5e-4 
 STATS_CSV_FILENAME = "training_stats.csv"
 
 class SimpleNeuralNetwork(nn.Module):
@@ -100,7 +100,7 @@ def evaluate_model_during_training(model, data_loader, device, criterion):
     return avg_loss, accuracy
 
 
-def train_model(filename: str):
+def train_model(filename: str, test_percentage: float = 0.25):
     device = t_device("cuda" if cuda_is_available() else "cpu")
     print(f'{color.Fore.BLUE}{color.Style.BRIGHT}Using device: {device}{color.Style.RESET_ALL}')
 
@@ -110,7 +110,7 @@ def train_model(filename: str):
     print(f'{color.Fore.GREEN}Loaded {len(full_train_dataset)} total datapoints for training/validation!{color.Style.RESET_ALL}')
 
     # Split dataset into training and validation sets
-    split_datasets = full_train_dataset.train_test_split(test_size=0.25, shuffle=True, seed=42)
+    split_datasets = full_train_dataset.train_test_split(test_size=test_percentage, shuffle=True, seed=42)
     train_dataset = split_datasets['train']
     val_dataset = split_datasets['test'] 
     print(f'{color.Fore.GREEN}Split dataset: {len(train_dataset)} training, {len(val_dataset)} validation datapoints.{color.Style.RESET_ALL}')
@@ -235,7 +235,10 @@ def train_model(filename: str):
     print(f'{color.Fore.GREEN}{color.Style.BRIGHT}Model saved to {model_path}!{color.Style.RESET_ALL}')
 
 if __name__ == '__main__':
-    if len(argv) < 2:
-        print('Usage: train_network <model_name>')
-    else:
-        train_model(argv[1])
+    # if len(argv) < 2:
+    #     print('Usage: train_network <model_name>')
+    # else:
+    #     train_model(argv[1])
+
+    for training_data_available in [0.10, 0.25, 0.35, 0.50, 0.75]:
+        train_model(f'{argv[1]}-limited-{f"{training_data_available:.2f}"[2:]}pct.pth', 1-training_data_available)
