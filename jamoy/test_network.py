@@ -42,7 +42,6 @@ def evaluate_model(model, data_loader, device, criterion):
             correct_predictions += (predicted == labels).sum().item()
 
             # Calculate False Positives (FP) and False Negatives (FN)
-            # Assuming class 1 is positive and class 0 is negative
             false_positives += ((predicted == 1) & (labels == 0)).sum().item()
             false_negatives += ((predicted == 0) & (labels == 1)).sum().item()
             

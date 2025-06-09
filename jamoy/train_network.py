@@ -235,10 +235,10 @@ def train_model(filename: str, test_percentage: float = 0.25):
     print(f'{color.Fore.GREEN}{color.Style.BRIGHT}Model saved to {model_path}!{color.Style.RESET_ALL}')
 
 if __name__ == '__main__':
-    # if len(argv) < 2:
-    #     print('Usage: train_network <model_name>')
-    # else:
-    #     train_model(argv[1])
+    if len(argv) < 2:
+        print('Usage: train_network <model_name>')
+    else:
+        train_model(argv[1])
 
-    for training_data_available in [0.10, 0.25, 0.35, 0.50, 0.75]:
-        train_model(f'{argv[1]}-limited-{f"{training_data_available:.2f}"[2:]}pct.pth', 1-training_data_available)
+    # for training_data_available in [0.10, 0.25, 0.35, 0.50, 0.75]:
+    #     train_model(f'{argv[1]}-limited-{f"{training_data_available:.2f}"[2:]}pct.pth', 1-training_data_available)
